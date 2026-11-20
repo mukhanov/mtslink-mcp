@@ -38,7 +38,7 @@ function handle(handler) {
   };
 }
 
-async function callChatRpc(method, body, expectedType, { maxResponseChars }) {
+async function callChatRpc(method, body, expectedType, { maxResponseChars = 100000 } = {}) {
   const token = await requireSessionToken(profilePath);
   const response = await gatewayCall(method, body, { token, endpoint: gatewayEndpoint });
   const value = unwrapChatRpc(response, expectedType);
@@ -93,7 +93,12 @@ server.registerTool(
       maxResponseChars: z.number().int().min(100).max(100000).default(30000),
     },
   },
-  handle(async (request) => apiRequest(request, await requireSessionToken(profilePath))),
+  handle(async (request) => apiRequest({
+    base: "gateway",
+    method: "GET",
+    maxResponseChars: 30000,
+    ...request,
+  }, await requireSessionToken(profilePath))),
 );
 
 server.registerTool(
@@ -101,11 +106,11 @@ server.registerTool(
   {
     description: "List private and group chats available to the current MTS Link account. Returns chat IDs for mtslink_get_messages.",
     inputSchema: {
-      limit: z.number().int().min(1).max(1000).default(100),
+      limit: z.number().int().min(1).max(50).default(50),
       maxResponseChars: z.number().int().min(100).max(100000).default(100000),
     },
   },
-  handle(async ({ limit, ...options }) => callChatRpc(
+  handle(async ({ limit = 50, ...options }) => callChatRpc(
     "Chat.GetMyDialogsAndGroupChatsV3",
     { limit },
     "DialogAndGroupChatsList",
@@ -118,11 +123,11 @@ server.registerTool(
   {
     description: "List channels available to the current MTS Link account. Channel IDs are used as chatId in mtslink_get_messages.",
     inputSchema: {
-      limit: z.number().int().min(1).max(1000).default(100),
+      limit: z.number().int().min(1).max(50).default(50),
       maxResponseChars: z.number().int().min(100).max(100000).default(100000),
     },
   },
-  handle(async ({ limit, ...options }) => callChatRpc(
+  handle(async ({ limit = 50, ...options }) => callChatRpc(
     "Chat.GetMyChannelsV3",
     { limit },
     "ChannelList",
@@ -144,7 +149,7 @@ server.registerTool(
       maxResponseChars: z.number().int().min(100).max(100000).default(100000),
     },
   },
-  handle(async ({ chatId, limit, from, direction, orEqual, parentId, ...options }) => ({
+  handle(async ({ chatId, limit = 50, from, direction, orEqual, parentId, ...options }) => ({
     chatId,
     ...await callChatRpc(
       "Chat.GetMessagesV2",
