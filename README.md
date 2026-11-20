@@ -47,6 +47,7 @@ Environment variables:
 | `mtslink_api_request` | Authenticated JSON/text HTTPS request to MTS Link services |
 | `mtslink_list_chats` | List private and group chats with their chat IDs |
 | `mtslink_list_channels` | List channels with IDs accepted as `chatId` |
+| `mtslink_search_messages` | Search messages across the selected organization or within one chat |
 | `mtslink_get_messages` | Read messages from a private chat, group chat, channel, or thread |
 
 API example:
@@ -66,6 +67,19 @@ Supported bases are `gateway`, `webinar`, `page`, and `admin`. Absolute request 
 The server reads `gw_token` from a temporary copy of the app's Chromium `Session Storage` database. The token is used only in memory for the current request, is never included in tool results or logs, and the temporary database copy is deleted immediately afterward.
 
 If the session is absent or expired, `mtslink_login` returns `authenticated: false`. Open MTS Link and sign in again to refresh it.
+
+## Search messages
+
+Only `query` is required. The server uses the organization currently selected in MTS Link:
+
+```json
+{
+  "query": "SEARCH_TEXT",
+  "size": 20
+}
+```
+
+Use `chatId` to restrict results to one chat or channel. For the next page, pass `from` equal to the previous offset plus the number of requested results, for example `from: 20, size: 20`. The response includes `items`, `memberProfiles`, and `total`.
 
 ## Read chats and channels
 

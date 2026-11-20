@@ -5,7 +5,7 @@ import { z } from "zod";
 import { DEFAULT_APP_PATH, getAppInfo, openApp } from "./app.js";
 import { apiRequest, login } from "./api.js";
 import { DEFAULT_GATEWAY_WS_URL, gatewayCall, unwrapChatRpc } from "./gateway.js";
-import { DEFAULT_PROFILE_PATH, readSessionToken, requireSessionToken } from "./session.js";
+import { DEFAULT_PROFILE_PATH, readSelectedOrganizationId, readSessionToken, requireSessionToken } from "./session.js";
 
 const appPath = process.env.MTSLINK_APP_PATH ?? DEFAULT_APP_PATH;
 const profilePath = process.env.MTSLINK_PROFILE_PATH ?? DEFAULT_PROFILE_PATH;
@@ -133,6 +133,36 @@ server.registerTool(
     "ChannelList",
     options,
   )),
+);
+
+server.registerTool(
+  "mtslink_search_messages",
+  {
+    description: "Search messages in the current MTS Link organization. Optionally restrict results to one chat. Use from and size for offset pagination.",
+    inputSchema: {
+      query: z.string().min(1).max(500).describe("Text to find in messages"),
+      chatId: z.string().min(1).optional().describe("Restrict search to this chat or channel"),
+      organizationId: z.string().min(1).optional().describe("Organization ID; defaults to the currently selected organization"),
+      from: z.number().int().min(0).default(0).describe("Result offset; use 0 for the first page"),
+      size: z.number().int().min(1).max(50).default(20).describe("Number of results per page"),
+      maxResponseChars: z.number().int().min(100).max(100000).default(100000),
+    },
+  },
+  handle(async ({ query, chatId, organizationId, from = 0, size = 20, ...options }) => {
+    const organization = organizationId ?? await readSelectedOrganizationId(profilePath);
+    if (!organization) throw new Error("No MTS Link organization is selected; pass organizationId explicitly");
+    return {
+      query,
+      from,
+      size,
+      ...await callChatRpc(
+        "Chat.SearchMessagesV4",
+        { query, organizationId: organization, from, size, chatId, previewCharsSize: 200 },
+        "SearchMessagesV3",
+        options,
+      ),
+    };
+  }),
 );
 
 server.registerTool(

@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Level } from "level";
-import { readSessionToken } from "../src/session.js";
+import { readSelectedOrganizationId, readSessionToken } from "../src/session.js";
 
 function tokenWithExpiry(exp) {
   return `header.${Buffer.from(JSON.stringify({ exp })).toString("base64url")}.signature`;
@@ -24,6 +24,24 @@ test("session reader finds the newest token in a Chromium session database", asy
     await db.put(Buffer.from("map-1-gw_token"), Buffer.from(JSON.stringify(currentToken), "utf16le"));
     await db.close();
     assert.equal(await readSessionToken(profilePath), currentToken);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("session reader decodes the selected organization from local storage", async () => {
+  const root = await mkdtemp(join(tmpdir(), "mtslink-organization-test-"));
+  const profilePath = join(root, "profile");
+  const storagePath = join(profilePath, "Local Storage/leveldb");
+  try {
+    await mkdir(storagePath, { recursive: true });
+    const db = new Level(storagePath, { keyEncoding: "buffer", valueEncoding: "buffer" });
+    await db.open();
+    const key = Buffer.from("_https://my.mts-link.ru\0\x01selectedOrgId", "utf8");
+    const value = Buffer.concat([Buffer.from([1]), Buffer.from(JSON.stringify("org-1"), "utf8")]);
+    await db.put(key, value);
+    await db.close();
+    assert.equal(await readSelectedOrganizationId(profilePath), "org-1");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
