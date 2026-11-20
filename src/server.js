@@ -5,7 +5,7 @@ import { z } from "zod";
 import { DEFAULT_APP_PATH, getAppInfo, openApp } from "./app.js";
 import { apiRequest, login } from "./api.js";
 import { DEFAULT_GATEWAY_WS_URL, gatewayCall, unwrapChatRpc } from "./gateway.js";
-import { DEFAULT_PROFILE_PATH, readSelectedOrganizationId, readSessionToken, requireSessionToken } from "./session.js";
+import { cleanupSessionSnapshots, DEFAULT_PROFILE_PATH, readSelectedOrganizationId, readSessionToken, requireSessionToken } from "./session.js";
 
 const appPath = process.env.MTSLINK_APP_PATH ?? DEFAULT_APP_PATH;
 const profilePath = process.env.MTSLINK_PROFILE_PATH ?? DEFAULT_PROFILE_PATH;
@@ -190,4 +190,5 @@ server.registerTool(
   })),
 );
 
+await cleanupSessionSnapshots();
 await server.connect(new StdioServerTransport());

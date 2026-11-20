@@ -35,7 +35,7 @@ Environment variables:
 
 - `MTSLINK_APP_PATH`: alternate `.app` path; default `/Applications/МТС Линк.app`.
 - `MTSLINK_PROFILE_PATH`: alternate app profile; default `~/Library/Application Support/LinkChats`.
-- `MTSLINK_GATEWAY_WS_URL`: alternate gateway; default `wss://prod-ws-chat.mts-link.ru/v1`.
+- `MTSLINK_GATEWAY_WS_URL`: alternate MTS Link gateway; default `wss://prod-ws-chat.mts-link.ru/v1`. Token-bearing connections are restricted to WSS on `mts-link.ru` and its subdomains. Plain WS is allowed only on loopback for local testing.
 
 ## Tools
 
@@ -64,7 +64,7 @@ Supported bases are `gateway`, `webinar`, `page`, and `admin`. Absolute request 
 
 ## Session handling
 
-The server reads `gw_token` from a temporary copy of the app's Chromium `Session Storage` database. The token is used only in memory for the current request, is never included in tool results or logs, and the temporary database copy is deleted immediately afterward.
+The server reads `gw_token` from a temporary copy of the app's Chromium `Session Storage` database. The token is used only in memory for the current request, is never included in tool results or logs, and the temporary database copy is deleted immediately afterward. At startup, the server also removes its own abandoned snapshot directories older than one hour; fresh snapshots belonging to active processes and unrelated files are left untouched.
 
 If the session is absent or expired, `mtslink_login` returns `authenticated: false`. Open MTS Link and sign in again to refresh it.
 

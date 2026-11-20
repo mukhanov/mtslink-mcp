@@ -59,6 +59,14 @@ test("gateway authenticates the saved session and sends chat RPC over WebSocket"
   });
 });
 
+test("gateway rejects non-MTS token destinations", async () => {
+  await assert.rejects(gatewayCall("Chat.GetMyDialogsAndGroupChatsV3", { limit: 1 }, {
+    token: "test-token",
+    endpoint: "wss://example.com/v1",
+    WebSocketImpl: FakeWebSocket,
+  }), /WSS on mts-link.ru/);
+});
+
 test("gateway rejects unexpected RPC result types", () => {
   assert.throws(() => unwrapChatRpc({
     type: "AccessDeniedError",

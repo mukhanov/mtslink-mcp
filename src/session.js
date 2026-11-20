@@ -1,9 +1,37 @@
 import { Level } from "level";
-import { cp, mkdtemp, rm } from "node:fs/promises";
+import { cp, mkdtemp, readdir, rm, stat } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 export const DEFAULT_PROFILE_PATH = join(homedir(), "Library/Application Support/LinkChats");
+const SNAPSHOT_PREFIX = "mtslink-mcp-session-";
+const SNAPSHOT_MAX_AGE_MS = 60 * 60 * 1000;
+
+export async function cleanupSessionSnapshots({
+  tempDirectory = tmpdir(),
+  maxAgeMs = SNAPSHOT_MAX_AGE_MS,
+  now = Date.now(),
+} = {}) {
+  let entries;
+  try {
+    entries = await readdir(tempDirectory, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  let removed = 0;
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !entry.name.startsWith(SNAPSHOT_PREFIX)) continue;
+    const path = join(tempDirectory, entry.name);
+    try {
+      const info = await stat(path);
+      if (now - info.mtimeMs < maxAgeMs) continue;
+      await rm(path, { recursive: true, force: true });
+      removed += 1;
+    } catch {}
+  }
+  return removed;
+}
+
 
 function parseStoredString(value) {
   const encodings = [

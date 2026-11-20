@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, rm, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Level } from "level";
-import { readSelectedOrganizationId, readSessionToken } from "../src/session.js";
+import { cleanupSessionSnapshots, readSelectedOrganizationId, readSessionToken } from "../src/session.js";
 
 function tokenWithExpiry(exp) {
   return `header.${Buffer.from(JSON.stringify({ exp })).toString("base64url")}.signature`;
@@ -42,6 +42,25 @@ test("session reader decodes the selected organization from local storage", asyn
     await db.put(key, value);
     await db.close();
     assert.equal(await readSelectedOrganizationId(profilePath), "org-1");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("snapshot cleanup removes only old MCP-owned directories", async () => {
+  const root = await mkdtemp(join(tmpdir(), "mtslink-cleanup-test-"));
+  try {
+    const stale = join(root, "mtslink-mcp-session-stale1");
+    await mkdir(stale);
+    await mkdir(join(root, "mtslink-mcp-session-fresh1"));
+    await mkdir(join(root, "unrelated-directory"));
+    const oldTime = (Date.now() - 2 * 60 * 60 * 1000) / 1000;
+    await utimes(stale, oldTime, oldTime);
+    assert.equal(await cleanupSessionSnapshots({ tempDirectory: root }), 1);
+    assert.deepEqual((await readdir(root)).sort(), [
+      "mtslink-mcp-session-fresh1",
+      "unrelated-directory",
+    ]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

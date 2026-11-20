@@ -19,8 +19,10 @@ export async function gatewayCall(method, param, {
   if (!/^Chat\.[A-Za-z0-9]+$/.test(method)) throw new Error("Invalid Chat RPC method");
   if (!token) throw new Error("An MTS Link session token is required");
   const url = new URL(endpoint);
-  if (url.protocol !== "wss:" && !(url.protocol === "ws:" && ["127.0.0.1", "localhost", "::1"].includes(url.hostname))) {
-    throw new Error("MTS Link gateway must use WSS except on loopback");
+  const isMtsLink = url.hostname === "mts-link.ru" || url.hostname.endsWith(".mts-link.ru");
+  const isLoopback = ["127.0.0.1", "localhost", "::1"].includes(url.hostname);
+  if (!(url.protocol === "wss:" && isMtsLink) && !(url.protocol === "ws:" && isLoopback)) {
+    throw new Error("MTS Link gateway must use WSS on mts-link.ru or WS on loopback");
   }
   url.searchParams.set("p", "desktop-mac");
   url.searchParams.set("v", "0.91.0-1.0.0");
