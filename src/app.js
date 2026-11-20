@@ -4,7 +4,6 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 
 export const DEFAULT_APP_PATH = "/Applications/МТС Линк.app";
-export const DEFAULT_CDP_ENDPOINT = "http://127.0.0.1:9222";
 
 export function sanitizeUrl(value) {
   const url = new URL(value);
@@ -27,14 +26,6 @@ export function validateDeepLink(value) {
     throw new Error("URL is too long");
   }
   return value;
-}
-
-export function validateLoopbackEndpoint(value) {
-  const url = new URL(value);
-  if (url.protocol !== "http:" || !["127.0.0.1", "localhost", "::1"].includes(url.hostname)) {
-    throw new Error("CDP endpoint must be an HTTP loopback URL");
-  }
-  return url.toString().replace(/\/$/, "");
 }
 
 export async function getAppInfo(appPath = DEFAULT_APP_PATH) {

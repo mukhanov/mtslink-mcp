@@ -1,27 +1,18 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import {
-  DEFAULT_APP_PATH,
-  DEFAULT_CDP_ENDPOINT,
-  getAppInfo,
-  openApp,
-} from "./app.js";
-import {
-  apiRequestExpression,
-  chatRpcExpression,
-  evaluateInApp,
-  listTargets,
-  loginExpression,
-  unwrapChatRpc,
-} from "./cdp.js";
+import { DEFAULT_APP_PATH, getAppInfo, openApp } from "./app.js";
+import { apiRequest, login } from "./api.js";
+import { DEFAULT_GATEWAY_WS_URL, gatewayCall, unwrapChatRpc } from "./gateway.js";
+import { DEFAULT_PROFILE_PATH, readSessionToken, requireSessionToken } from "./session.js";
 
 const appPath = process.env.MTSLINK_APP_PATH ?? DEFAULT_APP_PATH;
-const cdpEndpoint = process.env.MTSLINK_CDP_ENDPOINT ?? DEFAULT_CDP_ENDPOINT;
+const profilePath = process.env.MTSLINK_PROFILE_PATH ?? DEFAULT_PROFILE_PATH;
+const gatewayEndpoint = process.env.MTSLINK_GATEWAY_WS_URL ?? DEFAULT_GATEWAY_WS_URL;
 
 const server = new McpServer({
   name: "mtslink-mcp",
-  version: "0.1.0",
+  version: "0.2.0",
 });
 
 function result(value) {
@@ -46,13 +37,14 @@ function handle(handler) {
   };
 }
 
-async function callChatRpc(method, body, expectedType, { targetId, maxResponseChars }) {
-  const response = await evaluateInApp(
-    cdpEndpoint,
-    chatRpcExpression(method, body, maxResponseChars),
-    { targetId },
-  );
-  return unwrapChatRpc(JSON.parse(response.value), expectedType);
+async function callChatRpc(method, body, expectedType, { maxResponseChars }) {
+  const token = await requireSessionToken(profilePath);
+  const response = await gatewayCall(method, body, { token, endpoint: gatewayEndpoint });
+  const value = unwrapChatRpc(response, expectedType);
+  if (JSON.stringify(value).length > maxResponseChars) {
+    throw new Error("MTS Link API response exceeds maxResponseChars; reduce the requested limit");
+  }
+  return value;
 }
 
 server.registerTool(
@@ -63,14 +55,14 @@ server.registerTool(
   },
   handle(async () => ({
     ...await getAppInfo(appPath),
-    cdpEndpoint,
+    profilePath,
   })),
 );
 
 server.registerTool(
   "mtslink_open",
   {
-    description: "Open or focus MTS Link, optionally passing an HTTPS meeting/chat URL or mtslinkchats deep link. This uses the existing app session and does not require CDP.",
+    description: "Open or focus MTS Link, optionally passing an HTTPS meeting/chat URL or mtslinkchats deep link.",
     inputSchema: {
       url: z.string().max(8192).optional().describe("Meeting, chat, or mtslinkchats URL"),
     },
@@ -79,51 +71,28 @@ server.registerTool(
 );
 
 server.registerTool(
-  "mtslink_list_windows",
-  {
-    description: "List MTS Link renderer windows through the loopback CDP endpoint. URL query strings and fragments are omitted.",
-    inputSchema: {},
-  },
-  handle(async () => ({ windows: await listTargets(cdpEndpoint) })),
-);
-
-server.registerTool(
   "mtslink_login",
   {
-    description: "Check the current MTS Link login and return basic account details. Uses the existing app session; no password, cookies, or tokens are requested or extracted.",
-    inputSchema: {
-      targetId: z.string().optional().describe("Window ID from mtslink_list_windows; defaults to the main chats window"),
-    },
+    description: "Check the current MTS Link login using the desktop app's saved session. No password is requested and tokens are never returned.",
+    inputSchema: {},
   },
-  handle(async ({ targetId }) => {
-    const response = await evaluateInApp(cdpEndpoint, loginExpression(), { targetId });
-    return response.value;
-  }),
+  handle(async () => login(await readSessionToken(profilePath))),
 );
 
 server.registerTool(
   "mtslink_api_request",
   {
-    description: "Make an API request inside an MTS Link renderer using its existing cookies. No tokens or cookie values are read. Origins are restricted to the page and its configured MTS Link services.",
+    description: "Make an authenticated HTTP request to an MTS Link service using the desktop app's saved session. Tokens are never returned.",
     inputSchema: {
-      path: z.string().min(1).describe("Absolute path such as /api/login, or an HTTPS URL on a configured origin"),
+      path: z.string().min(1).describe("Absolute path such as /api/login, or an HTTPS URL on an MTS Link origin"),
       base: z.enum(["gateway", "webinar", "page", "admin"]).default("gateway"),
       method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).default("GET"),
       query: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional(),
       body: z.unknown().optional().describe("JSON request body; not allowed for GET"),
-      targetId: z.string().optional().describe("Window ID from mtslink_list_windows; defaults to the main chats window"),
       maxResponseChars: z.number().int().min(100).max(100000).default(30000),
     },
   },
-  handle(async (args) => {
-    const { targetId, ...request } = args;
-    const response = await evaluateInApp(
-      cdpEndpoint,
-      apiRequestExpression(request),
-      { targetId },
-    );
-    return response.value;
-  }),
+  handle(async (request) => apiRequest(request, await requireSessionToken(profilePath))),
 );
 
 server.registerTool(
@@ -132,7 +101,6 @@ server.registerTool(
     description: "List private and group chats available to the current MTS Link account. Returns chat IDs for mtslink_get_messages.",
     inputSchema: {
       limit: z.number().int().min(1).max(1000).default(100),
-      targetId: z.string().optional().describe("Window ID from mtslink_list_windows; defaults to the main chats window"),
       maxResponseChars: z.number().int().min(100).max(100000).default(100000),
     },
   },
@@ -150,7 +118,6 @@ server.registerTool(
     description: "List channels available to the current MTS Link account. Channel IDs are used as chatId in mtslink_get_messages.",
     inputSchema: {
       limit: z.number().int().min(1).max(1000).default(100),
-      targetId: z.string().optional().describe("Window ID from mtslink_list_windows; defaults to the main chats window"),
       maxResponseChars: z.number().int().min(100).max(100000).default(100000),
     },
   },
@@ -165,7 +132,7 @@ server.registerTool(
 server.registerTool(
   "mtslink_get_messages",
   {
-    description: "Get messages from a private chat, group chat, channel, or thread using the current MTS Link session. Use Before/After with from for pagination, or Around to load context around a message.",
+    description: "Get messages from a private chat, group chat, channel, or thread. Use Before/After with from for pagination, or Around to load context around a message.",
     inputSchema: {
       chatId: z.string().min(1).describe("Chat or channel ID from mtslink_list_chats, mtslink_list_channels, or the chat URL"),
       limit: z.number().int().min(1).max(100).default(50),
@@ -173,7 +140,6 @@ server.registerTool(
       direction: z.enum(["Before", "After", "Around"]).optional(),
       orEqual: z.boolean().optional().describe("Include the message specified by from"),
       parentId: z.string().min(1).optional().describe("Parent message ID to read thread replies"),
-      targetId: z.string().optional().describe("Window ID from mtslink_list_windows; defaults to the main chats window"),
       maxResponseChars: z.number().int().min(100).max(100000).default(100000),
     },
   },
@@ -186,28 +152,6 @@ server.registerTool(
       options,
     ),
   })),
-);
-
-server.registerTool(
-  "mtslink_call_action",
-  {
-    description: "Accept, decline, or close the currently open MTS Link incoming-call window through the app's verified preload bridge.",
-    inputSchema: {
-      action: z.enum(["accept", "decline", "close"]),
-      targetId: z.string().optional().describe("Specific window ID; otherwise finds the joinCall window"),
-    },
-  },
-  handle(async ({ action, targetId }) => {
-    const method = { accept: "accept", decline: "cancel", close: "close" }[action];
-    const expression = `(() => {
-      const api = window.__ELECTRON__?.joinCall;
-      if (!api?.${method}) throw new Error("MTS Link call bridge is unavailable");
-      api.${method}();
-      return { action: ${JSON.stringify(action)}, completed: true };
-    })()`;
-    const response = await evaluateInApp(cdpEndpoint, expression, { targetId, windowType: "joinCall" });
-    return response.value;
-  }),
 );
 
 await server.connect(new StdioServerTransport());
