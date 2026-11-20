@@ -4,26 +4,24 @@ Local stdio MCP server for MTS Link on macOS. It uses the desktop app's existing
 
 Verified against MTS Link 0.91.0 (build 0.91.0.3140).
 
-## Install
-
-```sh
-npm install
-```
+## Install and run
 
 Requires Node.js 22.5 or newer, macOS, and an installed MTS Link app. Open MTS Link and sign in before using authenticated tools. The app does not need any launch flags.
 
-MCP client configuration:
+No separate installation is needed. MCP client configuration:
 
 ```json
 {
   "mcpServers": {
     "mtslink": {
-      "command": "node",
-      "args": ["/absolute/path/to/mtslink/src/server.js"]
+      "command": "npx",
+      "args": ["-y", "mtslink-mcp"]
     }
   }
 }
 ```
+
+For development from a local checkout, use `npm install` and configure `node /absolute/path/to/mtslink/src/server.js` instead.
 
 Environment variables:
 

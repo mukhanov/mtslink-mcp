@@ -3,7 +3,13 @@
   "version": "0.2.0",
   "description": "Local MCP server for the MTS Link macOS desktop app",
   "type": "module",
-  "private": true,
+  "bin": {
+    "mtslink-mcp": "src/server.js"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
   "engines": {
     "node": ">=22.5.0"
   },
